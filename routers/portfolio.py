@@ -1,0 +1,36 @@
+from datetime import date
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from sqlmodel import Session
+
+from core.dependencies import get_current_user
+from db.session import get_db
+from models.portfolio import Holding
+from models.user import User
+from repositories.portfolio_repo import (
+    add_holding,
+    close_holding,
+    delete_holding,
+)
+
+templates = Jinja2Templates(directory="templates")
+router = APIRouter(tags=["portfolio"])
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def show_dashboard(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from services.dashboard_service import get_dashboard_context
+
+    context_obj = get_dashboard_context(db, user)
+    context = context_obj.model_dump()
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {"request": request, "context": context},
+    )
