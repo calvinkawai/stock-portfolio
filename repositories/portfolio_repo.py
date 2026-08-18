@@ -231,22 +231,63 @@ def add_holding(
 
 def close_holding(
     db: Session,
-    holding_id: int,
+    portfolio_id: int,
+    ticker_symbol: str,
     sell_price: float,
+    unit: int,
     exit_date: date,
 ) -> Holding:
-    """Closes an existing holding."""
-    holding_stmt = select(Holding).where(Holding.id == holding_id)
-    holding = db.exec(holding_stmt).first()
-    if not holding:
-        raise ValueError(f"Holding {holding_id} not found.")
+    """
+    Closes (fully or partially) a holding.
 
-    if holding.status != "OPEN":
-        raise ValueError(f"Holding {holding_id} is already closed.")
+    - Full close (unit >= holding.unit): status -> "CLOSED", closed_at set.
+    - Partial close (unit < holding.unit): the sold chunk is split off into a
+      new CLOSED holding row (so it appears in History / realized gains),
+      while the original row keeps the remaining units and stays "OPEN".
+    """
+    ticker_symbol = ticker_symbol.upper()
 
-    holding.sell_price = sell_price
-    holding.status = "CLOSED"
-    holding.closed_at = exit_date
+    # A symbol may have multiple rows (open position + closed exit chunks)
+    rows = db.exec(
+        select(Holding).where(
+            Holding.portfolio_id == portfolio_id,
+            Holding.symbol == ticker_symbol,
+        )
+    ).all()
+
+    if not rows:
+        raise HoldingNotFound(
+            f"Holding {ticker_symbol} not found in portfolio {portfolio_id}."
+        )
+
+    holding = next((h for h in rows if h.status == "OPEN"), None)
+    if holding is None:
+        raise HoldingAlreadyClosed(
+            f"Holding {ticker_symbol} is already closed."
+        )
+
+    if unit >= holding.unit:
+        # Full close: flip the row in place
+        holding.sell_price = sell_price
+        holding.status = "CLOSED"
+        holding.closed_at = exit_date
+    else:
+        # Partial close: split the sold chunk off as a CLOSED row
+        holding.unit -= unit
+        holding.sell_price = None  # no full exit on the remaining position
+        db.add(holding)
+
+        exit_row = Holding(
+            portfolio_id=holding.portfolio_id,
+            symbol=holding.symbol,
+            unit=unit,
+            buy_price=holding.buy_price,
+            sell_price=sell_price,
+            eod_price=holding.eod_price,
+            status="CLOSED",
+            closed_at=exit_date,
+        )
+        db.add(exit_row)
 
     db.commit()
     db.refresh(holding)
@@ -257,20 +298,31 @@ def delete_open_holding(db: Session, portfolio_id: int, ticker_symbol: str) -> N
     """Deletes an open holding from a portfolio."""
     ticker_symbol = ticker_symbol.upper()
 
-    holding_stmt = select(Holding).where(
-        Holding.portfolio_id == portfolio_id,
-        Holding.symbol == ticker_symbol,
-    )
-    holding = db.exec(holding_stmt).first()
+    # A symbol may have multiple rows (open position + closed exit chunks);
+    # only the OPEN row is deletable, history rows are preserved.
+    holding = db.exec(
+        select(Holding).where(
+            Holding.portfolio_id == portfolio_id,
+            Holding.symbol == ticker_symbol,
+            Holding.status == "OPEN",
+        )
+    ).first()
 
     if not holding:
+        exists = db.exec(
+            select(Holding)
+            .where(
+                Holding.portfolio_id == portfolio_id,
+                Holding.symbol == ticker_symbol,
+            )
+            .limit(1)
+        ).first()
+        if exists:
+            raise HoldingAlreadyClosed(
+                f"Holding {ticker_symbol} is already closed and cannot be deleted."
+            )
         raise HoldingNotFound(
             f"Holding {ticker_symbol} not found in portfolio {portfolio_id}."
-        )
-
-    if holding.status == "CLOSED":
-        raise HoldingAlreadyClosed(
-            f"Holding {ticker_symbol} is already closed and cannot be deleted."
         )
 
     db.delete(holding)

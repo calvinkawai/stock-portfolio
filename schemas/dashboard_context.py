@@ -18,6 +18,20 @@ class HoldingRequest(BaseModel):
     buy: float
 
 
+class CloseHoldingRequest(BaseModel):
+    """
+    {
+      "sell": 130.25,
+      "unit": 10,
+      "date": "2026-07-11"
+    }
+    """
+
+    sell: float
+    unit: int
+    date: str
+
+
 class TickerData(BaseModel):
     ticker: str
     name: str
@@ -40,7 +54,7 @@ class HoldingData(BaseModel):
 
 class ClosedHoldingData(BaseModel):
     ticker: str
-    weight: float
+    unit: int
     buy: float
     sell: float
     date: str
