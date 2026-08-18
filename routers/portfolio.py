@@ -8,13 +8,7 @@ from sqlmodel import Session
 
 from core.dependencies import get_current_user
 from db.session import get_db
-from models.portfolio import Holding
 from models.user import User
-from repositories.portfolio_repo import (
-    add_holding,
-    close_holding,
-    delete_holding,
-)
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter(tags=["portfolio"])

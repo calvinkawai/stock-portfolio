@@ -15,6 +15,9 @@ from models.user import User
 from repositories.portfolio_repo import (
     add_holding,
     get_single_portfolio_data,
+    delete_open_holding,
+    HoldingNotFound,
+    HoldingAlreadyClosed,
 )
 from schemas.dashboard_context import HoldingRequest
 
@@ -98,6 +101,45 @@ async def add_holding_endpoint(
         add_holding(db, portfolio_id, payload.ticker.strip(), payload.unit, payload.buy)
     except ValueError as exc:
         return _error(400, str(exc))
+
+    # Re-render the affected panel only
+    data = get_single_portfolio_data(db, portfolio_id, user.id)
+    if data is None:
+        return _error(500, "Failed to load updated portfolio data.")
+
+    return _render_panel(request, portfolio_key, data)
+
+
+@router.delete("/{portfolio_key}/holdings/{ticker}", response_class=HTMLResponse)
+async def delete_holding_endpoint(
+    portfolio_key: str,
+    ticker: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Deletes an open holding and returns the re-rendered portfolio panel."""
+    # Resolve portfolio
+    try:
+        portfolio_id = int(portfolio_key)
+    except (TypeError, ValueError):
+        return _error(404, "Portfolio not found.")
+
+    portfolio = db.exec(select(Portfolio).where(Portfolio.id == portfolio_id)).first()
+    if not portfolio:
+        return _error(404, "Portfolio not found.")
+
+    # Authorization: only the owner may mutate
+    if portfolio.user_id != user.id:
+        return _error(403, "You do not have permission to modify this portfolio.")
+
+    # Mutate
+    try:
+        delete_open_holding(db, portfolio_id, ticker)
+    except HoldingNotFound as exc:
+        return _error(404, str(exc))
+    except HoldingAlreadyClosed as exc:
+        return _error(409, str(exc))
 
     # Re-render the affected panel only
     data = get_single_portfolio_data(db, portfolio_id, user.id)

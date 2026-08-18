@@ -8,6 +8,14 @@ from models.ticker import EODPrice, Ticker
 from models.user import User
 
 
+class HoldingNotFound(Exception):
+    pass
+
+
+class HoldingAlreadyClosed(Exception):
+    pass
+
+
 def create_portfolio(db: Session, user: User) -> Portfolio:
     portfolio = Portfolio(name=f"{user.username}'s Postions", user_id=user.id)
     db.add(portfolio)
@@ -83,8 +91,11 @@ def _build_portfolio_payload(
         "description": portfolio.description,
         "user_id": portfolio.user_id,
         "owner_username": owner_username,
-        "editable": current_user_id is not None and portfolio.user_id == current_user_id,
-        "owner": "you" if (current_user_id is not None and portfolio.user_id == current_user_id) else owner_username,
+        "editable": current_user_id is not None
+        and portfolio.user_id == current_user_id,
+        "owner": "you"
+        if (current_user_id is not None and portfolio.user_id == current_user_id)
+        else owner_username,
         "holdings": holdings_data,
         "closed": closed_data,
         "total_unit": total_unit,
@@ -105,8 +116,7 @@ def get_all_portfolios_with_holdings_and_tickers(db: Session) -> list[dict]:
 
     # 2. Fetch all holdings with ticker names
     holdings_rows = db.exec(
-        select(Holding, Ticker.name)
-        .join(Ticker, Holding.symbol == Ticker.symbol)
+        select(Holding, Ticker.name).join(Ticker, Holding.symbol == Ticker.symbol)
     ).all()
 
     # 3. Group holdings by portfolio_id
@@ -121,7 +131,13 @@ def get_all_portfolios_with_holdings_and_tickers(db: Session) -> list[dict]:
 
     # 5. Construct the final structured list
     return [
-        _build_portfolio_payload(portfolio, owner_username, holdings_map.get(portfolio.id, []), eod_map, name_map)
+        _build_portfolio_payload(
+            portfolio,
+            owner_username,
+            holdings_map.get(portfolio.id, []),
+            eod_map,
+            name_map,
+        )
         for portfolio, owner_username in portfolios_raw
     ]
 
@@ -237,16 +253,29 @@ def close_holding(
     return holding
 
 
-def delete_holding(db: Session, holding_id: int) -> bool:
-    """Deletes a holding from the database."""
-    holding_stmt = select(Holding).where(Holding.id == holding_id)
+def delete_open_holding(db: Session, portfolio_id: int, ticker_symbol: str) -> None:
+    """Deletes an open holding from a portfolio."""
+    ticker_symbol = ticker_symbol.upper()
+
+    holding_stmt = select(Holding).where(
+        Holding.portfolio_id == portfolio_id,
+        Holding.symbol == ticker_symbol,
+    )
     holding = db.exec(holding_stmt).first()
+
     if not holding:
-        raise ValueError(f"Holding {holding_id} not found.")
+        raise HoldingNotFound(
+            f"Holding {ticker_symbol} not found in portfolio {portfolio_id}."
+        )
+
+    if holding.status == "CLOSED":
+        raise HoldingAlreadyClosed(
+            f"Holding {ticker_symbol} is already closed and cannot be deleted."
+        )
 
     db.delete(holding)
     db.commit()
-    return True
+
 
 
 def get_ticker_universe(db: Session) -> list[dict]:
