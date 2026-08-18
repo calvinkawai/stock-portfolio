@@ -160,11 +160,13 @@
   .stat-value.neg{color:var(--negative);}
   .stat-card.accent-top{border-top:2px solid var(--accent);}
 
-  /* ---------- QUICK ENTRY FORM ---------- */
-  .entry-card{
+  /* ---------- QUICK ENTRY FORM (Native Details/Summary) ---------- */
+  details.entry-wrap{
     background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius); padding:13px; margin:14px 0;
+    border-radius:var(--radius); overflow:hidden; margin:14px 0;
   }
+  .entry-card{ padding:0 13px 13px; }
+  .closed-toggle .entry-title{margin:0;}
   .entry-title{font-size:13px; font-weight:600; margin:0 0 10px; display:flex; align-items:center; gap:7px;}
   .entry-title svg{color:var(--accent);}
 
@@ -356,9 +358,9 @@
         <span>{{ context.user.username }}</span>
       </div>
       <!-- Removed standard logouts in favor of basic path, adjust based on backend setup -->
-      <button hx-post="/logout" class="signout-btn" title="Sign out" aria-label="Sign out">
+      <a href="/logout" class="signout-btn" title="Sign out" aria-label="Sign out">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      </button>
+      </a>
     </div>
   </div>
 
@@ -494,6 +496,24 @@
     document.body.appendChild(toast);
 
     setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
+  });
+
+  // Persist "Add a position" collapse state across reloads and HTMX panel swaps
+  const ENTRY_STATE_KEY = 'addPositionCollapsed';
+  function applyEntryState() {
+    const collapsed = localStorage.getItem(ENTRY_STATE_KEY) === '1';
+    document.querySelectorAll('details.entry-wrap').forEach(function(d) { d.open = !collapsed; });
+  }
+  applyEntryState();
+  document.body.addEventListener('htmx:load', function() { applyEntryState(); });
+  // Delegated listener so it survives HTMX swaps of the panel
+  document.addEventListener('click', function(e) {
+    const summary = e.target.closest('details.entry-wrap > summary');
+    if (summary) {
+      setTimeout(function() {
+        localStorage.setItem(ENTRY_STATE_KEY, summary.parentElement.open ? '0' : '1');
+      }, 0);
+    }
   });
 </script>
 </body>

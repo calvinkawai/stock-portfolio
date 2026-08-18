@@ -80,6 +80,7 @@ def _build_portfolio_payload(
             "buy": h.buy_price,
             "sell": h.sell_price if h.sell_price is not None else 0.0,
             "date": h.closed_at.strftime("%Y-%m-%d") if h.closed_at else "N/A",
+            "unit": h.unit,
         }
         for h in holdings
         if h.status == "CLOSED"
@@ -262,9 +263,7 @@ def close_holding(
 
     holding = next((h for h in rows if h.status == "OPEN"), None)
     if holding is None:
-        raise HoldingAlreadyClosed(
-            f"Holding {ticker_symbol} is already closed."
-        )
+        raise HoldingAlreadyClosed(f"Holding {ticker_symbol} is already closed.")
 
     if unit >= holding.unit:
         # Full close: flip the row in place
@@ -327,7 +326,6 @@ def delete_open_holding(db: Session, portfolio_id: int, ticker_symbol: str) -> N
 
     db.delete(holding)
     db.commit()
-
 
 
 def get_ticker_universe(db: Session) -> list[dict]:

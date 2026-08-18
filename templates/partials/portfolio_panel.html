@@ -2,14 +2,18 @@
 
 {% macro render_panel(key, p, ctx) %}
   {% if p.editable %}
-  <form class="entry-card"
-        hx-post="{{ ctx.api_base }}/portfolios/{{ key }}/holdings"
-        hx-target="#panel-{{ key }}"
-        hx-on::after-request="if(event.detail.successful) this.reset()">
-    <div class="entry-title">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Add a position
-    </div>
+  <details class="entry-wrap" open>
+    <summary class="closed-toggle">
+      <span class="entry-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add a position
+      </span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </summary>
+    <form class="entry-card"
+          hx-post="{{ ctx.api_base }}/portfolios/{{ key }}/holdings"
+          hx-target="#panel-{{ key }}"
+          hx-on::after-request="if(event.detail.successful) this.reset()">
 
     <div class="search-wrap">
       <!-- Visible input for typing and display -->
@@ -39,7 +43,8 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Add position
     </button>
-  </form>
+    </form>
+  </details>
   {% else %}
   <div class="view-only-strip show">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
