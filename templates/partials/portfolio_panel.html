@@ -1,0 +1,209 @@
+{% set seg_colors = ["#C79A4B","#34D399","#5B8DEF","#E08E45","#B15CE0","#3FB8C4","#E0C23F","#E0577B"] %}
+
+{% macro render_panel(key, p, ctx) %}
+  {% if p.editable %}
+  <form class="entry-card"
+        hx-post="{{ ctx.api_base }}/portfolios/{{ key }}/holdings"
+        hx-target="#panel-{{ key }}"
+        hx-on::after-request="if(event.detail.successful) this.reset()">
+    <div class="entry-title">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add a position
+    </div>
+
+    <div class="search-wrap">
+      <!-- Visible input for typing and display -->
+      <input type="text" id="tickerSearch-{{ key }}" placeholder="Search ticker or company…" autocomplete="off" aria-label="Search stock ticker" required>
+      <!-- Hidden input that HTMX actually sends to the backend -->
+      <input type="hidden" name="ticker" id="tickerValue-{{ key }}" required>
+
+      <div class="autocomplete" id="autocomplete-{{ key }}"></div>
+    </div>
+
+    <div class="entry-row">
+      <div class="field">
+        <label>Unit</label>
+        <div class="input-affix">
+          <input type="number" name="unit" inputmode="decimal" placeholder="0" min="0" step="0.1" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Buy price</label>
+        <div class="input-affix">
+          <span class="affix" style="left:9px; right:auto;">$</span>
+          <input type="number" name="buy" inputmode="decimal" placeholder="0.00" min="0" step="0.01" style="padding-left:20px;" required>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="add-btn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add position
+    </button>
+  </form>
+  {% else %}
+  <div class="view-only-strip show">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    <span>Shared by {{ p.owner }} — view only</span>
+  </div>
+  {% endif %}
+
+  {% set ns = namespace(allocated=0, unrealized=0, total_unit=0) %}
+  {% for h in p.holdings %}
+    {% set gain = (h.eod - h.buy) / h.buy * 100 %}
+    {% set impact = h.weight / 100 * gain %}
+    {% set ns.allocated = ns.allocated + h.weight %}
+    {% set ns.unrealized = ns.unrealized + impact %}
+    {% set ns.total_unit = ns.total_unit + (h.unit | default(0)) %}
+  {% endfor %}
+  {% set cash = [100 - ns.allocated, 0] | max %}
+
+  {% set ns2 = namespace(realized=0) %}
+  {% for c in p.closed %}
+    {% set ret = (c.sell - c.buy) / c.buy * 100 %}
+    {% set ns2.realized = ns2.realized + (c.weight / 100 * ret) %}
+  {% endfor %}
+
+  <div class="summary-grid">
+    <div class="stat-card accent-top">
+      <div class="stat-label">Allocation</div>
+      <div class="stat-value mono">{{ '%.1f'|format(ns.allocated) }}%</div>
+      <div class="stat-sub">{{ '%.1f'|format(cash) }}% cash</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Unrealized · EOD</div>
+      <div class="stat-value mono {{ 'pos' if ns.unrealized >= 0 else 'neg' }}">{{ '%+.2f'|format(ns.unrealized) }}%</div>
+      <div class="stat-sub">open positions</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Realized</div>
+      <div class="stat-value mono {{ 'pos' if ns2.realized >= 0 else 'neg' }}">{{ '%+.2f'|format(ns2.realized) }}%</div>
+      <div class="stat-sub">closed trades</div>
+    </div>
+  </div>
+
+  <div class="eyebrow">Active Holdings</div>
+  <div class="holdings-list">
+    {% if not p.holdings %}
+    <div class="empty-state">No open positions yet. Add one above to get started.</div>
+    {% endif %}
+
+    {% for h in p.holdings %}
+      {% set gain = (h.eod - h.buy) / h.buy * 100 %}
+      {% set impact = h.weight / 100 * gain %}
+      <div class="holding-row {{ 'pos' if gain >= 0 else 'neg' }}">
+        <div class="hr-top">
+          <div class="hr-id">
+            <div class="hr-ticker">{{ h.ticker }}</div>
+            <div class="hr-name">{{ h.name }}</div>
+          </div>
+          <div class="hr-weight mono">{{ '%.1f'|format(h.weight) }}%</div>
+        </div>
+
+        <div class="hr-stats">
+          <div class="hr-stat">
+            <div class="hr-stat-label">Buy</div>
+            <div class="hr-stat-value">${{ '%.2f'|format(h.buy) }}</div>
+          </div>
+          <div class="hr-stat">
+            <div class="hr-stat-label">EOD</div>
+            <div class="hr-stat-value">${{ '%.2f'|format(h.eod) }}</div>
+          </div>
+          <div class="hr-stat">
+            <div class="hr-stat-label">Unit</div>
+            <div class="hr-stat-value">{{ h.unit }}</div>
+          </div>
+        </div>
+
+        <div class="hr-stats">
+          <div class="hr-stat">
+            <div class="hr-stat-label">Gain / Loss</div>
+            <div class="hr-stat-value {{ 'pos' if gain >= 0 else 'neg' }}">{{ '%+.2f'|format(gain) }}%</div>
+          </div>
+          <div class="hr-stat">
+            <div class="hr-stat-label">Portfolio impact</div>
+            <div class="hr-stat-value {{ 'pos' if impact >= 0 else 'neg' }}">{{ '%+.3f'|format(impact) }}% pts</div>
+          </div>
+        </div>
+
+        {% if p.editable %}
+        <div class="hr-actions">
+          <button type="button" class="hr-btn close-btn" onclick="this.closest('.holding-row').querySelector('.close-form').classList.toggle('show')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Close
+          </button>
+
+          <button class="hr-btn del-btn"
+                  hx-delete="{{ ctx.api_base }}/portfolios/{{ key }}/holdings/{{ h.ticker }}"
+                  hx-target="#panel-{{ key }}"
+                  hx-confirm="Are you sure you want to permanently delete {{ h.ticker }}?">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            Delete
+          </button>
+        </div>
+
+        <form class="close-form"
+              hx-post="{{ ctx.api_base }}/portfolios/{{ key }}/holdings/{{ h.ticker }}/close"
+              hx-target="#panel-{{ key }}">
+          <div class="field">
+            <label>Sell price</label>
+            <input type="number" name="sell" step="0.01" min="0" placeholder="{{ '%.2f'|format(h.eod) }}" required>
+          </div>
+          <div class="field">
+            <label>Sell unit</label>
+            <input type="number" name="unit" step="0.01" min="0" placeholder="{{ '%.2f'|format(h.unit) }}" required>
+          </div>
+          <div class="field">
+            <label>Exit date</label>
+            <input type="date" name="date" required hx-on:htmx:load="if(!this.value) this.value = new Date().toISOString().split('T')[0]">
+          </div>
+          <button type="submit" class="confirm-close">Confirm close-out</button>
+        </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="eyebrow">Allocation(Total Unit: {{ ns.total_unit }})</div>
+  <div class="alloc-card">
+    <div class="alloc-bar">
+      {% for h in p.holdings %}
+        <div class="alloc-seg" style="width:{{ h.weight }}%; background:{{ seg_colors[loop.index0 % seg_colors|length] }};" title="{{ h.ticker }} — {{ '%.1f'|format(h.weight) }}%"></div>
+      {% endfor %}
+      <div class="alloc-seg cash-seg" style="width:{{ cash }}%;" title="Cash — {{ '%.1f'|format(cash) }}%"></div>
+    </div>
+    <div class="alloc-legend">
+      {% for h in p.holdings %}
+        <div class="alloc-legend-item"><span class="alloc-dot" style="background:{{ seg_colors[loop.index0 % seg_colors|length] }}"></span><span class="mono">{{ h.ticker }}</span> {{ '%.1f'|format(h.weight) }}%</div>
+      {% endfor %}
+      <div class="alloc-legend-item"><span class="alloc-dot" style="background:var(--cash)"></span>Cash {{ '%.1f'|format(cash) }}%</div>
+    </div>
+  </div>
+
+  <div class="eyebrow">History</div>
+  <details class="closed-wrap">
+    <summary class="closed-toggle">
+      <span>Closed positions <span class="count-pill">{{ p.closed | length }}</span></span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </summary>
+    <div class="closed-body">
+      {% if not p.closed %}
+      <div class="empty-state">No closed trades on record.</div>
+      {% endif %}
+      {% for c in p.closed %}
+        {% set ret = (c.sell - c.buy) / c.buy * 100 %}
+        <div class="closed-row">
+          <div class="cr-top">
+            <span class="cr-ticker">{{ c.ticker }}</span>
+            <span class="cr-return" style="color:{{ 'var(--positive)' if ret >= 0 else 'var(--negative)' }}">{{ '%+.2f'|format(ret) }}%</span>
+          </div>
+          <div class="cr-grid">
+            <div><div class="cr-stat-label">Weight</div><div class="cr-stat-value">{{ '%.1f'|format(c.weight) }}%</div></div>
+            <div><div class="cr-stat-label">Buy</div><div class="cr-stat-value">${{ '%.2f'|format(c.buy) }}</div></div>
+            <div><div class="cr-stat-label">Sell</div><div class="cr-stat-value">${{ '%.2f'|format(c.sell) }}</div></div>
+            <div><div class="cr-stat-label">Exit</div><div class="cr-stat-value">{{ c.date }}</div></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </details>
+{% endmacro %}

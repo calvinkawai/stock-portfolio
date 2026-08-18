@@ -24,6 +24,14 @@ This is a FastAPI-based web application designed to allow users to share their s
 - **Holdings:** Tracks `percentage` allocation, `buy_price`, `sell_price`, and `status` ("OPEN"/"CLOSED").
 - **Ticker Management:** Handled via a `ticker` service/router to manage unique stock symbols.
 
+## Agent Working Rules
+- **Plan Before Editing:** Before modifying any file, the agent MUST first present a short written plan covering: which files will be changed, what will change in each, and the expected outcome. Edits begin only after the user has approved the plan (or has explicitly approved it inline, e.g. "just do it").
+- **One Plan Per Change Set:** The plan should cover the full set of related edits, not just the first file, so the user can review the whole scope at once.
+- **Stay Within the Plan:** If implementation reveals the plan needs to change, stop, present the updated plan, and get approval before continuing.
+- **Reading is Free:** Reading, searching, and running non-mutating commands (tests, `ls`, `grep`) do not require a plan.
+- **Edit Small** When editing files, target the smallest possible unique block of code for "oldText" (ideally 1–2 lines). Ensure you replicate indentation character-for-character. If an edit fails, immediately fall back to rewriting the file entirely using the "write" tool.
+
+
 ## Development Notes
 - Use `SQLModel` for all database interactions.
 - Ensure the admin interface for manual refreshing is secure and only accessible to authorized users.

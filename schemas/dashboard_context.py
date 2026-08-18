@@ -63,6 +63,7 @@ class UserData(BaseModel):
 class DashboardContext(BaseModel):
     app_name: str
     app_short: str
+    api_base: str = "/api"
     user: UserData
     current_portfolio_key: str
     portfolios: dict[str, PortfolioData]

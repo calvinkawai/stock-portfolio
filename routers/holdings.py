@@ -1,14 +1,107 @@
-from fastapi import APIRouter
-from fastapi.requests import Request
+import json
+from typing import Optional
+from urllib.parse import parse_qsl
 
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
+from sqlmodel import Session, select
+
+from core.dependencies import get_current_user
+from db.session import get_db
+from models.portfolio import Portfolio
+from models.user import User
+from repositories.portfolio_repo import (
+    add_holding,
+    get_single_portfolio_data,
+)
 from schemas.dashboard_context import HoldingRequest
 
+templates = Jinja2Templates(directory="templates")
 
 router = APIRouter(prefix="/api/portfolios", tags=["Holdings"])
 
-@router.post("/{portfolio_key}/holdings")
-async def add_holding(portfolio_key: str, payload: HoldingRequest, request: Request):
-    return {
-      "editable": True,
-      "panel_html": "<div class=\"summary-grid\">\n  <div class=\"stat-card accent-top\">\n    <div class=\"stat-label\">Allocation</div>\n    <div class=\"stat-value mono\">40.0%</div>\n    <div class=\"stat-sub\">60.0% cash</div>\n  </div>\n  <div class=\"stat-card\">\n    <div class=\"stat-label\">Unrealized · EOD</div>\n    <div class=\"stat-value mono pos\">+6.67%</div>\n    <div class=\"stat-sub\">open positions</div>\n  </div>\n  <div class=\"stat-card\">\n    <div class=\"stat-label\">Realized</div>\n    <div class=\"stat-value mono pos\">+2.50%</div>\n    <div class=\"stat-sub\">closed trades</div>\n  </div>\n</div>\n\n<div class=\"eyebrow\">Active Holdings</div>\n<div class=\"holdings-list\">\n  <div class=\"holding-row pos\">\n    <div class=\"hr-top\">\n      <div class=\"hr-id\">\n        <div class=\"hr-ticker\">AAPL</div>\n        <div class=\"hr-name\">Apple Inc.</div>\n      </div>\n      <div class=\"hr-weight mono\">40.0%</div>\n    </div>\n    <div class=\"hr-stats\">\n      <div class=\"hr-stat\">\n        <div class=\"hr-stat-label\">Buy</div>\n        <div class=\"hr-stat-value\">$150.00</div>\n      </div>\n      <div class=\"hr-stat\">\n        <div class=\"hr-stat-label\">EOD</div>\n        <div class=\"hr-stat-value\">$175.00</div>\n      </div>\n      <div class=\"hr-stat\">\n        <div class=\"hr-stat-label\">Unit</div>\n        <div class=\"hr-stat-value\">10</div>\n      </div>\n    </div>\n    <div class=\"hr-stats\">\n      <div class=\"hr-stat\">\n        <div class=\"hr-stat-label\">Gain / Loss</div>\n        <div class=\"hr-stat-value pos\">+16.67%</div>\n      </div>\n      <div class=\"hr-stat\">\n        <div class=\"hr-stat-label\">Portfolio impact</div>\n        <div class=\"hr-stat-value pos\">+6.667% pts</div>\n      </div>\n    </div>\n    <div class=\"hr-actions\">\n      <button class=\"hr-btn close-btn\" data-action=\"close\" data-ticker=\"AAPL\">\n        <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M9 11l3 3L22 4\"/><path d=\"M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11\"/></svg>\n        Close\n      </button>\n      <button class=\"hr-btn del-btn\" data-action=\"delete\" data-ticker=\"AAPL\">\n        <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><polyline points=\"3 6 5 6 21 6\"/><path d=\"M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6\"/><path d=\"M10 11v6\"/><path d=\"M14 11v6\"/><path d=\"M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2\"/></svg>\n        Delete\n      </button>\n    </div>\n    <div class=\"close-form\" data-form=\"AAPL\">\n      <div class=\"field\">\n        <label>Sell price</label>\n        <input type=\"number\" step=\"0.01\" min=\"0\" placeholder=\"175.00\" data-sell=\"AAPL\">\n      </div>\n      <div class=\"field\">\n        <label>Sell unit</label>\n        <input type=\"number\" step=\"0.01\" min=\"0\" placeholder=\"10.00\" data-unit=\"AAPL\">\n      </div>\n      <div class=\"field\">\n        <label>Exit date</label>\n        <input type=\"date\" data-date=\"AAPL\">\n      </div>\n      <button class=\"confirm-close\" data-confirm=\"AAPL\">Confirm close-out</button>\n    </div>\n  </div>\n</div>\n\n<div class=\"eyebrow\">Allocation(Total Unit: 10.00)</div>\n<div class=\"alloc-card\">\n  <div class=\"alloc-bar\">\n    <div class=\"alloc-seg\" style=\"width:40.0%; background:#C79A4B;\" title=\"AAPL — 40.0%\"></div>\n    <div class=\"alloc-seg cash-seg\" style=\"width:60.0%;\" title=\"Cash — 60.0%\"></div>\n  </div>\n  <div class=\"alloc-legend\">\n    <div class=\"alloc-legend-item\"><span class=\"alloc-dot\" style=\"background:#C79A4B\"></span><span class=\"mono\">AAPL</span> 40.0%</div>\n    <div class=\"alloc-legend-item\"><span class=\"alloc-dot\" style=\"background:var(--cash)\"></span>Cash 60.0%</div>\n  </div>\n</div>\n\n<div class=\"eyebrow\">History</div>\n<div class=\"closed-wrap\">\n  <button class=\"closed-toggle\" data-closed-toggle aria-expanded=\"false\">\n    <span>Closed positions <span class=\"count-pill\">1</span></span>\n    <svg class=\"chev\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"/></svg>\n  </button>\n  <div class=\"closed-body\" data-closed-body>\n    <div class=\"closed-list\">\n      <div class=\"closed-row\">\n        <div class=\"cr-top\">\n          <span class=\"cr-ticker\">TSLA</span>\n          <span class=\"cr-return\" style=\"color:var(--positive)\">+25.00%</span>\n        </div>\n        <div class=\"cr-grid\">\n          <div><div class=\"cr-stat-label\">Weight</div><div class=\"cr-stat-value\">10.0%</div></div>\n          <div><div class=\"cr-stat-label\">Buy</div><div class=\"cr-stat-value\">$200.00</div></div>\n          <div><div class=\"cr-stat-label\">Sell</div><div class=\"cr-stat-value\">$250.00</div></div>\n          <div><div class=\"cr-stat-label\">Exit</div><div class=\"cr-stat-value\">2026-08-15</div></div>\n        </div>\n      </div>\n    </div>\n  </div>\n</div>"
-    }
+
+def _error(status_code: int, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"error": message})
+
+
+def _render_panel(request: Request, key: str, data: dict) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/portfolio_panel_response.html",
+        {
+            "request": request,
+            "key": key,
+            "p": data,
+            "context": {"api_base": "/api"},
+        },
+    )
+
+
+async def _parse_holding_request(request: Request) -> Optional[HoldingRequest]:
+    """Accepts both HTMX form posts (urlencoded) and JSON bodies."""
+    body = await request.body()
+    if not body:
+        return None
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            raw = json.loads(body)
+        except (ValueError, TypeError):
+            return None
+    else:
+        raw = dict(parse_qsl(body.decode()))
+
+    try:
+        return HoldingRequest(**raw)
+    except ValidationError:
+        return None
+
+
+@router.post("/{portfolio_key}/holdings", response_class=HTMLResponse)
+async def add_holding_endpoint(
+    portfolio_key: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Adds (or tops up) a position and returns the re-rendered portfolio panel."""
+    # Resolve portfolio
+    try:
+        portfolio_id = int(portfolio_key)
+    except (TypeError, ValueError):
+        return _error(404, "Portfolio not found.")
+
+    portfolio = db.exec(select(Portfolio).where(Portfolio.id == portfolio_id)).first()
+    if not portfolio:
+        return _error(404, "Portfolio not found.")
+
+    # Authorization: only the owner may mutate
+    if portfolio.user_id != user.id:
+        return _error(403, "You do not have permission to modify this portfolio.")
+
+    # Parse + validate payload (form or JSON)
+    payload = await _parse_holding_request(request)
+    if payload is None:
+        return _error(400, "Invalid request: ticker, unit and buy are required.")
+    if not payload.ticker or not payload.ticker.strip():
+        return _error(400, "Ticker is required.")
+    if payload.unit is None or payload.unit <= 0:
+        return _error(400, "Unit must be greater than 0.")
+    if payload.buy is None or payload.buy <= 0:
+        return _error(400, "Buy price must be greater than 0.")
+
+    # Mutate
+    try:
+        add_holding(db, portfolio_id, payload.ticker.strip(), payload.unit, payload.buy)
+    except ValueError as exc:
+        return _error(400, str(exc))
+
+    # Re-render the affected panel only
+    data = get_single_portfolio_data(db, portfolio_id, user.id)
+    if data is None:
+        return _error(500, "Failed to load updated portfolio data.")
+
+    return _render_panel(request, portfolio_key, data)
