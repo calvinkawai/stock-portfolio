@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Sign In - Ledgr{% endblock %}
+{% block content %}
+
+{#
+  Styled to match the Ledgr dashboard (deep navy surface, gold accent,
+  IBM Plex Mono/Sans). The font link + small style block below are scoped
+  to this page — if other pages adopt the same look, move them into
+  base.html once instead of loading per page.
+#}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  .ledgr-auth{
+    --bg:#0B1220; --surface:#121B2E; --surface-2:#17213A;
+    --border:#233150; --text:#E8EDF5; --text-muted:#8697B5; --text-dim:#5D6D8C;
+    --accent:#C79A4B; --accent-soft:rgba(199,154,75,0.14); --accent-line:rgba(199,154,75,0.35);
+    --negative:#F1596A; --negative-soft:rgba(241,89,106,0.12);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+  }
+  .ledgr-auth .mono{ font-family:'IBM Plex Mono', ui-monospace, monospace; }
+  .ledgr-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-top:2px solid var(--accent);
+    border-radius:16px; padding:32px 28px;
+  }
+  .ledgr-mark{
+    width:40px; height:40px; border-radius:9px; margin:0 auto 14px;
+    background:linear-gradient(155deg, var(--accent), #8a6a2e);
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:16px; color:#0B1220;
+  }
+  .ledgr-eyebrow{
+    font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--text-dim); text-align:center; margin-bottom:6px;
+  }
+  .ledgr-title{ color:var(--text); }
+  .ledgr-error{
+    background:var(--negative-soft); border-left:3px solid var(--negative);
+    color:var(--negative); font-size:13px;
+  }
+  .ledgr-label{
+    font-family:'IBM Plex Mono'; font-size:10px; letter-spacing:0.6px; text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  .ledgr-input{
+    background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    border-radius:9px;
+  }
+  .ledgr-input::placeholder{ color:var(--text-dim); }
+  .ledgr-input:focus{
+    outline:none; border-color:var(--accent-line);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  .ledgr-btn{
+    background:var(--accent); color:#1a1305; border-radius:9px; font-weight:700;
+    transition:filter .15s ease, transform .1s ease;
+  }
+  .ledgr-btn:hover{ filter:brightness(1.08); }
+  .ledgr-btn:active{ transform:scale(0.99); }
+  .ledgr-footer-text{ color:var(--text-muted); }
+  .ledgr-link{ color:var(--accent); }
+  .ledgr-link:hover{ text-decoration:underline; }
+  .ledgr-divider{
+    display:flex; align-items:center; gap:8px; margin:22px 0 0;
+    font-family:'IBM Plex Mono'; font-size:9px; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  .ledgr-divider::before, .ledgr-divider::after{
+    content:""; flex:1; height:1px; background:var(--border);
+  }
+</style>
+
+<div class="ledgr-auth w-full max-w-md">
+  <div class="ledgr-card shadow-xl">
+    <div class="ledgr-mark mono">LG</div>
+    <div class="ledgr-eyebrow mono">Secure Sign-In</div>
+    <h2 class="ledgr-title text-2xl font-bold text-center mb-6">Sign In to Your Portfolio</h2>
+
+    {% if error %}
+        <div class="ledgr-error mb-4 p-3">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    <form action="/login" method="POST" class="space-y-4">
+        <div>
+            <label class="ledgr-label block mb-1">Username</label>
+            <input type="text" name="username" value="{{ username or '' }}" required
+                   class="ledgr-input mt-1 w-full px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="ledgr-label block mb-1">Password</label>
+            <input type="password" name="password" required
+                   class="ledgr-input mt-1 w-full px-3 py-2 text-sm">
+        </div>
+        <button type="submit"
+                class="ledgr-btn w-full py-2 px-4 text-sm">
+            Sign In
+        </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,604 @@
+{#
+  =====================================================================
+  Ledgr — Portfolio Dashboard (HTMX + Jinja2)
+  =====================================================================
+  BACKEND CONTRACT:
+  All mutation endpoints should return pure HTML (the rendered output
+  of the `render_panel` macro) instead of JSON. Portfolio switching is
+  fully client-side: all panels are pre-rendered and toggled with JS.
+
+    POST   {api_base}/portfolios/{key}/holdings
+        form data: ticker=AAPL&unit=10&buy=210.40
+        -> 200 HTML (returns updated macro output)
+        -> 4xx JSON { "error": "human readable message" }
+
+    POST   {api_base}/portfolios/{key}/holdings/{ticker}/close
+        form data: sell=224.10&unit=10&date=2026-08-15
+        -> 200 HTML (returns updated macro output)
+        -> 4xx JSON { "error": "human readable message" }
+
+    DELETE {api_base}/portfolios/{key}/holdings/{ticker}
+        -> 200 HTML (returns updated macro output)
+        -> 4xx JSON { "error": "human readable message" }
+  =====================================================================
+#}
+{% import "partials/portfolio_panel.html" as panel %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{ context.app_name }} — Portfolio Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- HTMX Loaded via CDN -->
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<style>
+  :root{
+    --bg:#0B1220;
+    --surface:#121B2E;
+    --surface-2:#17213A;
+    --surface-3:#1D2A45;
+    --border:#233150;
+    --border-soft:#1A263F;
+    --text:#E8EDF5;
+    --text-muted:#8697B5;
+    --text-dim:#5D6D8C;
+    --accent:#C79A4B;
+    --accent-soft:rgba(199,154,75,0.14);
+    --accent-line:rgba(199,154,75,0.35);
+    --positive:#34D399;
+    --positive-soft:rgba(52,211,153,0.12);
+    --negative:#F1596A;
+    --negative-soft:rgba(241,89,106,0.12);
+    --cash:#4A5878;
+    --radius:14px;
+    --radius-sm:9px;
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(circle at 12% 0%, rgba(199,154,75,0.06), transparent 40%), var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    min-height:100vh;
+    padding-bottom:48px;
+  }
+  .mono{font-family:'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums;}
+  ::selection{background:var(--accent-soft); color:var(--accent);}
+
+  a,button,input,select{font-family:inherit;}
+  button{cursor:pointer;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px;}
+
+  .shell{max-width:520px; margin:0 auto; padding:0 14px;}
+
+  /* ---------- NAV ---------- */
+  .navbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 14px 12px;
+    position:sticky; top:0; z-index:40;
+    background:rgba(11,18,32,0.92);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border-soft);
+  }
+  .brand{display:flex; align-items:center; gap:9px; min-width:0;}
+  .brand-mark{
+    width:26px; height:26px; border-radius:6px;
+    background:linear-gradient(155deg, var(--accent), #8a6a2e);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono'; font-weight:700; font-size:13px; color:#0B1220;
+    flex:none;
+  }
+  .brand-name{font-weight:700; font-size:16.5px; letter-spacing:0.2px;}
+  .portfolio-select{
+    display:flex; align-items:center; gap:5px;
+    background:none; border:none; color:var(--text-muted);
+    font-size:11.5px; padding:2px 4px; margin-left:2px;
+    max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .portfolio-select select{
+    background:transparent; border:none; color:var(--text-muted);
+    font-size:11.5px; max-width:110px; cursor:pointer;
+  }
+  .portfolio-select select:focus-visible{outline:none;}
+  .portfolio-select select option { background: var(--surface); color: var(--text); }
+
+  .nav-right{display:flex; align-items:center; gap:8px; flex:none;}
+  .user-badge{
+    display:flex; align-items:center; gap:7px;
+    background:var(--surface-2); border:1px solid var(--border);
+    padding:5px 9px 5px 6px; border-radius:20px;
+  }
+  .avatar{
+    width:20px; height:20px; border-radius:50%;
+    background:var(--accent-soft); color:var(--accent);
+    font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono';
+  }
+  .user-badge span{font-size:12px; color:var(--text-muted);}
+  .signout-btn{
+    background:none; border:none; color:var(--text-dim);
+    padding:6px; display:flex; align-items:center; border-radius:8px;
+  }
+  .signout-btn:hover{color:var(--negative); background:var(--negative-soft);}
+
+  .view-only-strip{
+    display:flex; align-items:center; gap:6px;
+    font-size:11px; color:var(--accent); background:var(--accent-soft);
+    border:1px solid var(--accent-line); border-radius:8px;
+    padding:6px 10px; margin:14px 0;
+  }
+  .view-only-strip svg{flex:none;}
+
+  /* ---------- SECTION LABELS ---------- */
+  .eyebrow{
+    font-family:'IBM Plex Mono'; font-size:10px; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--text-dim); margin:22px 0 9px 2px; display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--border-soft);}
+
+  /* ---------- SUMMARY CARDS ---------- */
+  .summary-grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px;
+  }
+  .stat-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-sm); padding:11px 9px;
+    display:flex; flex-direction:column; gap:5px; min-width:0;
+  }
+  .stat-label{
+    font-family:'IBM Plex Mono'; font-size:9px; letter-spacing:0.8px; text-transform:uppercase;
+    color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .stat-value{font-family:'IBM Plex Mono'; font-size:19px; font-weight:600; line-height:1; letter-spacing:-0.3px;}
+  .stat-sub{font-size:10.5px; color:var(--text-muted);}
+  .stat-value.pos{color:var(--positive);}
+  .stat-value.neg{color:var(--negative);}
+  .stat-card.accent-top{border-top:2px solid var(--accent);}
+
+  /* ---------- QUICK ENTRY FORM (Native Details/Summary) ---------- */
+  details.entry-wrap{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden; margin:14px 0;
+  }
+  .entry-card{ padding:0 13px 13px; }
+  .closed-toggle .entry-title{margin:0;}
+  .entry-title{font-size:13px; font-weight:600; margin:0 0 10px; display:flex; align-items:center; gap:7px;}
+  .entry-title svg{color:var(--accent);}
+
+  /* Autocomplete Specifics */
+  .search-wrap{position:relative; margin-bottom:8px;}
+  .search-wrap input[type="text"]{
+    width:100%; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--text); padding:10px 12px; border-radius:9px; font-size:14px;
+  }
+  .search-wrap input::placeholder{color:var(--text-dim);}
+  .autocomplete{
+    position:absolute; left:0; right:0; top:calc(100% + 5px);
+    background:var(--surface-3); border:1px solid var(--border);
+    border-radius:10px; overflow:hidden; z-index:30;
+    max-height:230px; overflow-y:auto;
+    box-shadow:0 12px 28px rgba(0,0,0,0.45);
+    display:none;
+  }
+  .autocomplete.show{display:block;}
+  .ac-item{
+    display:flex; align-items:baseline; gap:8px; padding:9px 12px;
+    border-bottom:1px solid var(--border-soft); font-size:13px; cursor:pointer;
+  }
+  .ac-item:last-child{border-bottom:none;}
+  .ac-item:hover, .ac-item.active{background:var(--accent-soft);}
+  .ac-ticker{font-family:'IBM Plex Mono'; font-weight:700; color:var(--accent); flex:none;}
+  .ac-name{color:var(--text-muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ac-empty{padding:12px; font-size:12.5px; color:var(--text-dim); text-align:center;}
+
+  .entry-row{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .field{display:flex; flex-direction:column; gap:4px;}
+  .field label{font-family:'IBM Plex Mono'; font-size:9.5px; text-transform:uppercase; letter-spacing:0.6px; color:var(--text-dim);}
+  .field .input-affix{position:relative;}
+  .field input{
+    width:100%; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--text); padding:9px 10px; border-radius:8px; font-size:13.5px;
+    font-family:'IBM Plex Mono';
+  }
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .field .affix{
+    position:absolute; right:9px; top:50%; transform:translateY(-50%);
+    font-size:12px; color:var(--text-dim); pointer-events:none;
+  }
+  .add-btn{
+    margin-top:10px; width:100%; background:var(--accent); border:none;
+    color:#1a1305; font-weight:700; font-size:13.5px; padding:11px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    transition:filter .15s ease, transform .1s ease;
+  }
+  .add-btn:hover{filter:brightness(1.08);}
+  .add-btn:active{transform:scale(0.98);}
+
+  /* HTMX loading states */
+  .htmx-request.add-btn, .htmx-request .add-btn { opacity: 0.6; cursor: wait; pointer-events: none; }
+
+  /* ---------- HOLDINGS ---------- */
+  .holdings-list{display:flex; flex-direction:column; gap:8px;}
+  .holding-row{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-sm); padding:12px 12px 12px 13px;
+    position:relative; overflow:hidden;
+  }
+  .holding-row::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; }
+  .holding-row.pos::before{background:var(--positive);}
+  .holding-row.neg::before{background:var(--negative);}
+  .hr-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .hr-id{min-width:0;}
+  .hr-ticker{font-family:'IBM Plex Mono'; font-weight:700; font-size:14.5px; letter-spacing:0.2px;}
+  .hr-name{font-size:11px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .hr-weight{
+    font-family:'IBM Plex Mono'; font-size:12.5px; font-weight:600; color:var(--text);
+    background:var(--surface-2); border:1px solid var(--border); padding:3px 8px; border-radius:20px;
+    flex:none;
+  }
+  .hr-stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:11px;}
+  .hr-stat{display:flex; flex-direction:column; gap:2px;}
+  .hr-stat-label{font-family:'IBM Plex Mono'; font-size:8.5px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-dim);}
+  .hr-stat-value{font-family:'IBM Plex Mono'; font-size:12.5px; font-weight:600;}
+  .hr-stat-value.pos{color:var(--positive);}
+  .hr-stat-value.neg{color:var(--negative);}
+
+  .hr-actions{display:flex; gap:7px; margin-top:11px;}
+  .hr-btn{
+    flex:1; font-size:11.5px; font-weight:600; padding:8px; border-radius:7px;
+    border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted);
+    display:flex; align-items:center; justify-content:center; gap:5px;
+  }
+  .hr-btn.close-btn:hover{border-color:var(--accent-line); color:var(--accent);}
+  .hr-btn.del-btn:hover{border-color:rgba(241,89,106,0.4); color:var(--negative);}
+
+  .close-form{
+    margin-top:10px; padding-top:10px; border-top:1px dashed var(--border);
+    display:none; gap:8px; grid-template-columns:1fr 1fr; align-items:end;
+  }
+  .close-form.show{display:grid;}
+  .close-form .field input{padding:8px 9px; font-size:12.5px;}
+  .close-form .confirm-close{
+    grid-column:1 / -1; background:var(--positive); color:#062017; border:none;
+    font-weight:700; font-size:12.5px; padding:9px; border-radius:7px; margin-top:2px;
+  }
+
+  .empty-state{
+    text-align:center; padding:26px 14px; color:var(--text-dim); font-size:12.5px;
+    border:1px dashed var(--border); border-radius:var(--radius-sm);
+  }
+
+  /* ---------- ALLOCATION BAR ---------- */
+  .alloc-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px;
+  }
+  .alloc-bar{
+    display:flex; width:100%; height:22px; border-radius:6px; overflow:hidden;
+    border:1px solid var(--accent-line); background:var(--surface-2);
+  }
+  .alloc-seg{height:100%; position:relative; transition:filter .15s ease;}
+  .alloc-seg:not(:last-child){border-right:1px solid rgba(11,18,32,0.55);}
+  .alloc-seg:hover{filter:brightness(1.15);}
+  .alloc-seg.cash-seg{
+    background:repeating-linear-gradient(135deg, var(--cash), var(--cash) 5px, #3b455e 5px, #3b455e 10px);
+  }
+  .alloc-legend{display:flex; flex-wrap:wrap; gap:9px 14px; margin-top:12px;}
+  .alloc-legend-item{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted);}
+  .alloc-dot{width:8px; height:8px; border-radius:2px; flex:none;}
+
+  /* ---------- CLOSED POSITIONS (Native Details/Summary) ---------- */
+  details.closed-wrap{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden; margin-bottom: 24px;
+  }
+  summary.closed-toggle{
+    width:100%; list-style:none; cursor:pointer; color:var(--text);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px; font-size:13.5px; font-weight:600;
+  }
+  summary.closed-toggle::-webkit-details-marker { display:none; }
+  summary.closed-toggle .count-pill{
+    font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--text-dim);
+    background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:2px 8px; margin-left:8px;
+  }
+  summary.closed-toggle .chev{transition:transform .2s ease; color:var(--text-dim);}
+  details[open] summary .chev{transform:rotate(180deg);}
+  .closed-body{padding:0 14px 14px; display:flex; flex-direction:column; gap:8px;}
+  .closed-row{
+    background:var(--surface-2); border:1px solid var(--border-soft); border-radius:9px;
+    padding:10px 11px;
+  }
+  .cr-top{display:flex; justify-content:space-between; align-items:baseline;}
+  .cr-ticker{font-family:'IBM Plex Mono'; font-weight:700; font-size:13px;}
+  .cr-return{font-family:'IBM Plex Mono'; font-weight:600; font-size:13px;}
+  .cr-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:8px;}
+  .cr-stat-label{font-family:'IBM Plex Mono'; font-size:8px; text-transform:uppercase; color:var(--text-dim); letter-spacing:0.4px;}
+  .cr-stat-value{font-family:'IBM Plex Mono'; font-size:11.5px; margin-top:2px;}
+
+  /* Global Toast Errors */
+  .toast-error {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--negative-soft); color: var(--negative); border: 1px solid rgba(241,89,106,0.35);
+    border-radius: 9px; padding: 9px 14px; font-size: 13px; z-index: 100; font-weight: 500;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3); animation: slideUp 0.3s ease;
+  }
+  @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+  /* ---------- DELETE CONFIRM MODAL ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; z-index:60;
+    background:rgba(11,18,32,0.7); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:20px 18px 16px;
+    width:100%; max-width:340px; text-align:center;
+    box-shadow:0 20px 50px rgba(0,0,0,0.5);
+    animation:modalIn .18s ease;
+  }
+  @keyframes modalIn { from { opacity:0; transform:scale(0.95) translateY(8px); } to { opacity:1; transform:none; } }
+  .modal-icon{
+    width:40px; height:40px; border-radius:50%; margin:0 auto 12px;
+    background:var(--negative-soft); color:var(--negative);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .modal-title{font-size:15px; font-weight:700; margin-bottom:6px;}
+  .modal-msg{font-size:12.5px; color:var(--text-muted); line-height:1.5; margin-bottom:16px;}
+  .modal-msg .mono{color:var(--text); font-weight:600;}
+  .modal-actions{display:flex; gap:8px;}
+  .modal-btn{
+    flex:1; font-size:13px; font-weight:700; padding:10px; border-radius:8px;
+    border:1px solid var(--border); background:var(--surface-2); color:var(--text-muted);
+    transition:filter .15s ease, transform .1s ease;
+  }
+  .modal-btn:hover{filter:brightness(1.12);}
+  .modal-btn:active{transform:scale(0.98);}
+  .modal-btn.danger{
+    background:var(--negative); border-color:transparent; color:#2b0a10;
+  }
+
+  footer{
+    text-align:center; color:var(--text-dim); font-size:10.5px; margin-top:26px; padding:0 14px;
+    font-family:'IBM Plex Mono'; letter-spacing:0.4px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="navbar">
+    <div class="brand">
+      <div class="brand-mark">{{ context.app_short }}</div>
+      <div class="brand-name">{{ context.app_name }}</div>
+      <div class="portfolio-select">
+        <select id="portfolioSelect" name="portfolio_key"
+                onchange="togglePortfolio(this.value)">
+          {% for key, p in context.portfolios.items() %}
+          <option value="{{ key }}" {{ "selected" if key == context.current_portfolio_key else "" }}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="nav-right">
+      <div class="user-badge">
+        <div class="avatar">{{ context.user.initials }}</div>
+        <span>{{ context.user.username }}</span>
+      </div>
+      <!-- Removed standard logouts in favor of basic path, adjust based on backend setup -->
+      <a href="/logout" class="signout-btn" title="Sign out" aria-label="Sign out">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <div class="shell">
+
+    <!-- One pre-rendered panel per portfolio; switching is client-side -->
+    <div id="portfolioPanels">
+      {% for key, p in context.portfolios.items() %}
+      <div id="panel-{{ key }}" class="portfolio-panel"
+           {{ "hidden" if key != context.current_portfolio_key else "" }}>
+        {{ panel.render_panel(key, p, context) }}
+      </div>
+      {% endfor %}
+    </div>
+
+    <footer>{{ context.app_name | upper }} · EOD BASIS · LIVE DATA VIA API</footer>
+  </div>
+
+  <!-- Delete confirmation modal (themed, centered) -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+      <div class="modal-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="modal-title" id="deleteModalTitle">Delete position</div>
+      <div class="modal-msg">Are you sure you want to permanently delete <span class="mono" id="deleteModalTicker"></span>? This cannot be undone.</div>
+      <div class="modal-actions">
+        <button type="button" class="modal-btn" id="deleteModalCancel">Cancel</button>
+        <button type="button" class="modal-btn danger" id="deleteModalConfirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // Static Reference Data
+  const UNIVERSE = {{ context.ticker_universe | tojson | safe }};
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // Bind Custom Autocomplete
+  function initAutocomplete(wrap) {
+    const searchInput = wrap.querySelector('input[type="text"]');
+    const hiddenInput = wrap.querySelector('input[name="ticker"]');
+    const autocompleteEl = wrap.querySelector('.autocomplete');
+
+    if (!searchInput || !autocompleteEl) return;
+
+    let acActiveIndex = -1;
+    let acResults = [];
+
+    function renderAutocomplete(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) { autocompleteEl.classList.remove("show"); acResults = []; return; }
+
+      acResults = UNIVERSE.filter(s => s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)).slice(0, 7);
+      acActiveIndex = -1;
+
+      if (!acResults.length) {
+        autocompleteEl.innerHTML = `<div class="ac-empty">No matches for "${escapeHtml(query)}"</div>`;
+        autocompleteEl.classList.add("show");
+        return;
+      }
+
+      autocompleteEl.innerHTML = acResults.map((s, i) =>
+        `<div class="ac-item" data-idx="${i}">
+           <span class="ac-ticker mono">${s.ticker}</span>
+           <span class="ac-name">${escapeHtml(s.name)}</span>
+         </div>`
+      ).join("");
+      autocompleteEl.classList.add("show");
+    }
+
+    function selectTicker(stock) {
+      searchInput.value = `${stock.ticker} — ${stock.name}`;
+      hiddenInput.value = stock.ticker;
+      autocompleteEl.classList.remove("show");
+    }
+
+    searchInput.addEventListener("input", () => {
+      hiddenInput.value = ""; // Clear real value if they start typing again
+      renderAutocomplete(searchInput.value);
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      if (!acResults.length) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); acActiveIndex = Math.min(acActiveIndex + 1, acResults.length - 1); highlightAc(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); acActiveIndex = Math.max(acActiveIndex - 1, 0); highlightAc(); }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        if (acActiveIndex >= 0) selectTicker(acResults[acActiveIndex]);
+      }
+      else if (e.key === "Escape") { autocompleteEl.classList.remove("show"); }
+    });
+
+    function highlightAc() {
+      [...autocompleteEl.querySelectorAll(".ac-item")].forEach((item, i) => item.classList.toggle("active", i === acActiveIndex));
+    }
+
+    autocompleteEl.addEventListener("click", (e) => {
+      const item = e.target.closest(".ac-item");
+      if (item) selectTicker(acResults[+item.dataset.idx]);
+    });
+  }
+
+  // Initialize autocomplete for every search box in a given scope
+  function initAllAutocomplete(scope) {
+    scope.querySelectorAll('.search-wrap').forEach(function(wrap) {
+      if (wrap.dataset.acInit) return; // already bound
+      wrap.dataset.acInit = '1';
+      initAutocomplete(wrap);
+    });
+  }
+
+  // Initial page load (script sits at the end of <body>)
+  initAllAutocomplete(document);
+
+  // Re-init after HTMX swaps a fresh panel into the DOM
+  document.body.addEventListener('htmx:load', function(evt) {
+    initAllAutocomplete(evt.detail.elt);
+  });
+
+  // Client-side portfolio switching (no server round-trip)
+  function togglePortfolio(key) {
+    document.querySelectorAll('.portfolio-panel').forEach(function(panel) {
+      panel.hidden = panel.id !== 'panel-' + key;
+    });
+  }
+
+  // Close any open autocomplete when clicking outside (single global listener)
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-wrap')) {
+      document.querySelectorAll('.autocomplete.show').forEach(function(el) {
+        el.classList.remove('show');
+      });
+    }
+  });
+
+  // Global Toast Notification for HTMX Errors
+  document.body.addEventListener('htmx:responseError', function(evt) {
+    let msg = "An error occurred with the request.";
+    try { msg = JSON.parse(evt.detail.xhr.response).error || msg; } catch(e){}
+
+    const toast = document.createElement("div");
+    toast.className = "toast-error";
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
+  });
+
+  // Delete confirmation modal (replaces native hx-confirm)
+  const deleteModal = document.getElementById('deleteModal');
+  let pendingDeleteBtn = null;
+
+  function openDeleteModal(btn) {
+    pendingDeleteBtn = btn;
+    document.getElementById('deleteModalTicker').textContent = btn.dataset.delTicker || '';
+    deleteModal.classList.add('show');
+  }
+  function closeDeleteModal() {
+    pendingDeleteBtn = null;
+    deleteModal.classList.remove('show');
+  }
+
+  // Delegated so it survives HTMX panel swaps
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.del-btn');
+    if (btn) { e.preventDefault(); openDeleteModal(btn); }
+  });
+
+  document.getElementById('deleteModalCancel').addEventListener('click', closeDeleteModal);
+  deleteModal.addEventListener('click', function(e) {
+    if (e.target === deleteModal) closeDeleteModal();
+  });
+  document.getElementById('deleteModalConfirm').addEventListener('click', function() {
+    if (pendingDeleteBtn) {
+      htmx.ajax('delete', pendingDeleteBtn.dataset.delUrl, pendingDeleteBtn.dataset.delTarget);
+    }
+    closeDeleteModal();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && deleteModal.classList.contains('show')) closeDeleteModal();
+  });
+
+  // Persist "Add a position" collapse state across reloads and HTMX panel swaps
+  const ENTRY_STATE_KEY = 'addPositionCollapsed';
+  function applyEntryState() {
+    const collapsed = localStorage.getItem(ENTRY_STATE_KEY) === '1';
+    document.querySelectorAll('details.entry-wrap').forEach(function(d) { d.open = !collapsed; });
+  }
+  applyEntryState();
+  document.body.addEventListener('htmx:load', function() { applyEntryState(); });
+  // Delegated listener so it survives HTMX swaps of the panel
+  document.addEventListener('click', function(e) {
+    const summary = e.target.closest('details.entry-wrap > summary');
+    if (summary) {
+      setTimeout(function() {
+        localStorage.setItem(ENTRY_STATE_KEY, summary.parentElement.open ? '0' : '1');
+      }, 0);
+    }
+  });
+</script>
+</body>
+</html>
