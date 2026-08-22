@@ -1,7 +1,6 @@
 from datetime import date
-from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session
@@ -14,7 +13,7 @@ templates = Jinja2Templates(directory="templates")
 router = APIRouter(tags=["portfolio"])
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
+@router.get("/", response_class=HTMLResponse)
 def show_dashboard(
     request: Request,
     db: Session = Depends(get_db),

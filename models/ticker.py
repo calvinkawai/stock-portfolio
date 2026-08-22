@@ -10,7 +10,7 @@ class Ticker(SQLModel, table=True):
 
 
 class EODPrice(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     symbol: str = Field(index=True, nullable=False)
     close_price: float = Field(nullable=False)
     price_date: date = Field(default_factory=date.today, index=True)

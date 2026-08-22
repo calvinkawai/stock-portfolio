@@ -52,7 +52,7 @@ def _build_portfolio_payload(
     holdings: list[Holding],
     eod_map: dict[str, float],
     name_map: dict[str, str],
-    current_user_id: Optional[int] = None,
+    current_user_id: int | None = None,
 ) -> dict:
     """Builds the dashboard payload (weights, totals, split open/closed) for one portfolio."""
     open_holdings = [h for h in holdings if h.status == "OPEN"]
@@ -149,7 +149,7 @@ def get_all_portfolios_with_holdings_and_tickers(db: Session) -> list[dict]:
 
 def get_single_portfolio_data(
     db: Session, portfolio_id: int, current_user_id: int
-) -> Optional[dict]:
+) -> dict | None:
     """
     Fetches data for a single portfolio and calculates its specific weights/totals.
     Returns a structure compatible with PortfolioData, or None if not found.
