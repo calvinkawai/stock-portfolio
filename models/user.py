@@ -1,11 +1,14 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from sqlmodel import Field, Relationship, SQLModel
 
+if TYPE_CHECKING:
+    from models.portfolio import Portfolio
+
 
 class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True, nullable=False)
     hashed_password: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -15,7 +18,8 @@ class User(SQLModel, table=True):
         back_populates="user", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
     portfolios: list["Portfolio"] = Relationship(
-        back_populates="owner", sa_relationship_kwargs={"cascade": "all, delete-orphan", "uselist": False}
+        back_populates="owner",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan", "uselist": False},
     )
 
 
@@ -25,4 +29,7 @@ class Session(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Relationship
-    user: Optional[User] = Relationship(back_populates="sessions")
+    user: User | None = Relationship(back_populates="sessions")
+
+
+User.model_rebuild()

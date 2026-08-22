@@ -1,7 +1,5 @@
-from calendar import c
-from typing import Optional
-
-from pydantic import BaseModel, model_validator
+from datetime import date
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class HoldingRequest(BaseModel):
@@ -17,6 +15,28 @@ class HoldingRequest(BaseModel):
     unit: int
     buy: float
 
+    @field_validator('ticker')
+    @classmethod
+    def ticker_non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('Ticker is required.')
+        return v.upper()
+
+    @field_validator('unit')
+    @classmethod
+    def unit_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('Unit must be greater than 0.')
+        return v
+
+    @field_validator('buy')
+    @classmethod
+    def buy_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError('Buy price must be greater than 0.')
+        return v
+
 
 class CloseHoldingRequest(BaseModel):
     """
@@ -31,6 +51,31 @@ class CloseHoldingRequest(BaseModel):
     unit: int
     date: str
 
+    @field_validator('sell')
+    @classmethod
+    def sell_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError('Sell price must be greater than 0.')
+        return v
+
+    @field_validator('unit')
+    @classmethod
+    def unit_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError('Unit must be a positive integer.')
+        return v
+
+    @field_validator('date')
+    @classmethod
+    def date_valid(cls, v: str) -> str:
+        try:
+            d = date.fromisoformat(v)
+        except ValueError:
+            raise ValueError('Date must be in YYYY-MM-DD format.')
+        if d > date.today():
+            raise ValueError('Date cannot be in the future.')
+        return v
+
 
 class TickerData(BaseModel):
     ticker: str
@@ -43,7 +88,7 @@ class HoldingData(BaseModel):
     weight: float
     unit: int
     buy: float
-    eod: Optional[float] = None
+    eod: float | None = None
 
     @model_validator(mode="after")
     def set_eod_default(self) -> "HoldingData":
@@ -77,7 +122,7 @@ class UserData(BaseModel):
 class DashboardContext(BaseModel):
     app_name: str
     app_short: str
-    api_base: str = "/api"
+    api_base: str = ""
     user: UserData
     current_portfolio_key: str
     portfolios: dict[str, PortfolioData]

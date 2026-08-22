@@ -25,7 +25,7 @@ def login_page(
 ):
     # If user is already logged in, redirect them directly to the dashboard
     if session_token and user_repo.get_user_by_session_token(db, session_token):
-        return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
     return templates.TemplateResponse(
         request=request, name="auth/login.html", context={"error": None}
@@ -55,7 +55,7 @@ def login(
     user_repo.create_session(db, user_id=user.id, token=token)
 
     # Set HttpOnly Cookie and Redirect to Dashboard
-    response = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax")
     return response
 
@@ -79,7 +79,7 @@ def register_page(
 
     # 2. Redirect logged-in users to dashboard
     if session_token and user_repo.get_user_by_session_token(db, session_token):
-        return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
     # 3. Render registration page passing the register_key into template context
     return templates.TemplateResponse(
@@ -125,7 +125,7 @@ def register(
     token = generate_session_token()
     _ = user_repo.create_session(db, user_id=new_user.id, token=token)
 
-    response = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(key="session_token", value=token, httponly=True, samesite="lax")
     return response
 

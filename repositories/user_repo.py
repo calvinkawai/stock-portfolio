@@ -15,7 +15,7 @@ def create_user(db: Session, username: str, hashed_password: str) -> User:
     return user
 
 
-def get_user_by_username(db: Session, username: str) -> Optional[User]:
+def get_user_by_username(db: Session, username: str) -> User | None:
     statement = select(User).where(User.username == username)
     return db.exec(statement).first()
 
@@ -46,7 +46,7 @@ def delete_session(db: Session, token: str) -> bool:
     return False
 
 
-def get_user_by_session_token(db: Session, token: str) -> Optional[User]:
+def get_user_by_session_token(db: Session, token: str) -> User | None:
     if not token:
         return None
     statement = select(UserSession).where(UserSession.token == token)

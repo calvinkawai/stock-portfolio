@@ -1,13 +1,13 @@
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
 
 class Portfolio(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     name: str = Field(nullable=False)  # e.g., "Growth Strategy", "Dividend Picks"
-    description: Optional[str] = Field(default=None)
+    description: str | None = Field(default=None)
     user_id: int = Field(foreign_key="user.id", nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -22,7 +22,7 @@ class Portfolio(SQLModel, table=True):
 
 
 class Holding(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     portfolio_id: int = Field(foreign_key="portfolio.id", nullable=False)
     symbol: str = Field(index=True, nullable=False)  # e.g., "AAPL", "NVDA"
 
@@ -30,12 +30,10 @@ class Holding(SQLModel, table=True):
     buy_price: float = Field(
         nullable=False
     )  # Price paid per share when position was opened
-    sell_price: Optional[float] = Field(
+    sell_price: float | None = Field(
         default=None
     )  # Execution price when position is closed
-    eod_price: float = Field(
-        nullable=False
-    )  # Latest end-of-day price for the position
+    eod_price: float = Field(nullable=False)  # Latest end-of-day price for the position
 
     # Position Lifecycle: "OPEN" or "CLOSED"
     status: str = Field(default="OPEN", index=True)
@@ -43,11 +41,11 @@ class Holding(SQLModel, table=True):
     # Unit represents an abstract, proportional slice of your total portfolio.
     unit: int = Field(nullable=False)
 
-    notes: Optional[str] = Field(
+    notes: str | None = Field(
         default=None
     )  # Optional trade thesis or notes for friends
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    closed_at: Optional[datetime] = Field(default=None)
+    closed_at: datetime | None = Field(default=None)
 
     # Relationships
-    portfolio: Optional[Portfolio] = Relationship(back_populates="holdings")
+    portfolio: Portfolio | None = Relationship(back_populates="holdings")
