@@ -55,7 +55,6 @@ class HoldingData(BaseModel):
 class ClosedHoldingData(BaseModel):
     ticker: str
     unit: int
-    weight: float
     buy: float
     sell: float
     date: str

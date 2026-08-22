@@ -26,7 +26,7 @@ from schemas.dashboard_context import CloseHoldingRequest, HoldingRequest
 
 templates = Jinja2Templates(directory="templates")
 
-router = APIRouter(prefix="/api/portfolios", tags=["Holdings"])
+router = APIRouter(prefix="/portfolios", tags=["Holdings"])
 
 
 def _error(status_code: int, message: str) -> JSONResponse:

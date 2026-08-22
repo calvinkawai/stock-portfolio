@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -73,17 +73,21 @@ def _build_portfolio_payload(
         for h in open_holdings
     ]
 
+    closed_holdings = sorted(
+        (h for h in holdings if h.status == "CLOSED"),
+        key=lambda h: h.closed_at or datetime.min,
+        reverse=True,  # latest closed position on top
+    )
+
     closed_data = [
         {
             "ticker": h.symbol,
-            "weight": weight(h),
             "buy": h.buy_price,
             "sell": h.sell_price if h.sell_price is not None else 0.0,
             "date": h.closed_at.strftime("%Y-%m-%d") if h.closed_at else "N/A",
             "unit": h.unit,
         }
-        for h in holdings
-        if h.status == "CLOSED"
+        for h in closed_holdings
     ]
 
     return {

@@ -62,11 +62,14 @@
   {% endfor %}
   {% set cash = [100 - ns.allocated, 0] | max %}
 
-  {% set ns2 = namespace(realized=0) %}
+  {% set ns2 = namespace(realized=0, count=0, units=0) %}
   {% for c in p.closed %}
     {% set ret = (c.sell - c.buy) / c.buy * 100 %}
-    {% set ns2.realized = ns2.realized + (c.weight / 100 * ret) %}
+    {% set ns2.realized = ns2.realized + (c.unit | default(0) * ret) %}
+    {% set ns2.count = ns2.count + 1 %}
+    {% set ns2.units = ns2.units + (c.unit | default(0)) %}
   {% endfor %}
+  {% if ns2.units > 0 %}{% set ns2.realized = ns2.realized / ns2.units %}{% endif %}
 
   <div class="summary-grid">
     <div class="stat-card accent-top">
@@ -81,8 +84,13 @@
     </div>
     <div class="stat-card">
       <div class="stat-label">Realized</div>
+      {% if ns2.count > 0 %}
       <div class="stat-value mono {{ 'pos' if ns2.realized >= 0 else 'neg' }}">{{ '%+.2f'|format(ns2.realized) }}%</div>
-      <div class="stat-sub">closed trades</div>
+      <div class="stat-sub">avg of {{ ns2.count }} trade{{ 's' if ns2.count != 1 }}</div>
+      {% else %}
+      <div class="stat-value mono">—</div>
+      <div class="stat-sub">no closed trades</div>
+      {% endif %}
     </div>
   </div>
 
@@ -202,7 +210,7 @@
             <span class="cr-return" style="color:{{ 'var(--positive)' if ret >= 0 else 'var(--negative)' }}">{{ '%+.2f'|format(ret) }}%</span>
           </div>
           <div class="cr-grid">
-            <div><div class="cr-stat-label">Weight</div><div class="cr-stat-value">{{ '%.1f'|format(c.weight) }}%</div></div>
+            <div><div class="cr-stat-label">Units</div><div class="cr-stat-value">{{ c.unit }}</div></div>
             <div><div class="cr-stat-label">Buy</div><div class="cr-stat-value">${{ '%.2f'|format(c.buy) }}</div></div>
             <div><div class="cr-stat-label">Sell</div><div class="cr-stat-value">${{ '%.2f'|format(c.sell) }}</div></div>
             <div><div class="cr-stat-label">Exit</div><div class="cr-stat-value">{{ c.date }}</div></div>
