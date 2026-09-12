@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -64,12 +64,20 @@ async def close_holding_endpoint(
         )
     ).all()
     if not rows:
-        raise HTTPException(status_code=404, detail=f"Holding {ticker.upper()} not found in this portfolio.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Holding {ticker.upper()} not found in this portfolio.",
+        )
     holding = next((h for h in rows if h.status == "OPEN"), None)
     if holding is None:
-        raise HTTPException(status_code=409, detail=f"Holding {ticker.upper()} is already closed.")
+        raise HTTPException(
+            status_code=409, detail=f"Holding {ticker.upper()} is already closed."
+        )
     if payload.unit > holding.unit:
-        raise HTTPException(status_code=400, detail=f"Cannot sell {payload.unit} units; only {holding.unit} are held.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot sell {payload.unit} units; only {holding.unit} are held.",
+        )
 
     exit_date = date.fromisoformat(payload.date)
     close_holding(db, portfolio.id, ticker, payload.sell, payload.unit, exit_date)
